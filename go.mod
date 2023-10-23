@@ -1,4 +1,4 @@
-module refactoring
+module trueconf-refactor
 
 go 1.17
 
