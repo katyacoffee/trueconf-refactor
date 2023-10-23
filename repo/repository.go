@@ -2,14 +2,12 @@ package repo
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/fs"
-	"io/ioutil"
-	"net/http"
+	"os"
 	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/render"
 	"trueconf-refactor/model"
 )
 
@@ -21,101 +19,96 @@ func NewRepository() *Repository {
 	return &Repository{}
 }
 
-func (repo Repository) SearchUsers(w http.ResponseWriter, r *http.Request) {
-	f, _ := ioutil.ReadFile(store)
+func (repo Repository) GetAllUsers() (*model.UserStore, error) {
+	f, _ := os.ReadFile(store)
 	s := model.UserStore{}
-	_ = json.Unmarshal(f, &s)
-
-	render.JSON(w, r, s.List)
-	return
-}
-
-func (repo Repository) CreateUser(w http.ResponseWriter, r *http.Request) {
-	f, _ := ioutil.ReadFile(store)
-	s := model.UserStore{}
-	_ = json.Unmarshal(f, &s)
-
-	request := model.CreateUserRequest{}
-
-	if err := render.Bind(r, &request); err != nil {
-		_ = render.Render(w, r, model.ErrInvalidRequest(err))
-		return
+	err := json.Unmarshal(f, &s)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
 
-	s.Increment++
+	return &s, nil
+}
+
+func (repo Repository) CreateUser(request model.CreateUserRequest) (string, error) {
+	allUsers, err := repo.GetAllUsers()
+	if err != nil {
+		return "", fmt.Errorf("GetAllUsers: %w", err)
+	}
+
+	allUsers.Increment++
 	u := model.User{
 		CreatedAt:   time.Now(),
 		DisplayName: request.DisplayName,
 		Email:       request.DisplayName,
 	}
 
-	id := strconv.Itoa(s.Increment)
-	s.List[id] = u
+	id := strconv.Itoa(allUsers.Increment)
+	allUsers.List[id] = u
 
-	b, _ := json.Marshal(&s)
-	_ = ioutil.WriteFile(store, b, fs.ModePerm)
-
-	render.Status(r, http.StatusCreated)
-	render.JSON(w, r, map[string]interface{}{
-		"user_id": id,
-	})
-}
-
-func (repo Repository) GetUser(w http.ResponseWriter, r *http.Request) {
-	f, _ := ioutil.ReadFile(store)
-	s := model.UserStore{}
-	_ = json.Unmarshal(f, &s)
-
-	id := chi.URLParam(r, "id")
-
-	render.JSON(w, r, s.List[id])
-}
-
-func (repo Repository) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	f, _ := ioutil.ReadFile(store)
-	s := model.UserStore{}
-	_ = json.Unmarshal(f, &s)
-
-	request := model.UpdateUserRequest{}
-
-	if err := render.Bind(r, &request); err != nil {
-		_ = render.Render(w, r, model.ErrInvalidRequest(err))
-		return
+	b, err := json.Marshal(allUsers)
+	if err != nil {
+		return "", fmt.Errorf("marshal: %w", err)
 	}
 
-	id := chi.URLParam(r, "id")
-
-	if _, ok := s.List[id]; !ok {
-		_ = render.Render(w, r, model.ErrInvalidRequest(model.UserNotFound))
-		return
+	err = os.WriteFile(store, b, fs.ModePerm)
+	if err != nil {
+		return "", fmt.Errorf("WriteFile: %w", err)
 	}
 
-	u := s.List[id]
+	return id, nil
+}
+
+func (repo Repository) GetUser(id string) (model.User, error) {
+	allUsers, err := repo.GetAllUsers()
+	if err != nil {
+		return model.User{}, fmt.Errorf("GetAllUsers: %w", err)
+	}
+
+	return allUsers.List[id], nil
+}
+
+func (repo Repository) UpdateUser(request model.UpdateUserRequest, id string) error {
+	allUsers, err := repo.GetAllUsers()
+	if err != nil {
+		return fmt.Errorf("GetAllUsers: %w", err)
+	}
+
+	if _, ok := allUsers.List[id]; !ok {
+		return model.UserNotFound
+	}
+
+	u := allUsers.List[id]
 	u.DisplayName = request.DisplayName
-	s.List[id] = u
+	allUsers.List[id] = u
 
-	b, _ := json.Marshal(&s)
-	_ = ioutil.WriteFile(store, b, fs.ModePerm)
-
-	render.Status(r, http.StatusNoContent)
-}
-
-func (repo Repository) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	f, _ := ioutil.ReadFile(store)
-	s := model.UserStore{}
-	_ = json.Unmarshal(f, &s)
-
-	id := chi.URLParam(r, "id")
-
-	if _, ok := s.List[id]; !ok {
-		_ = render.Render(w, r, model.ErrInvalidRequest(model.UserNotFound))
-		return
+	b, err := json.Marshal(allUsers)
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
 	}
 
-	delete(s.List, id)
+	err = os.WriteFile(store, b, fs.ModePerm)
+	if err != nil {
+		return fmt.Errorf("WriteFile: %w", err)
+	}
 
-	b, _ := json.Marshal(&s)
-	_ = ioutil.WriteFile(store, b, fs.ModePerm)
+	return nil
+}
 
-	render.Status(r, http.StatusNoContent)
+func (repo Repository) DeleteUser(id string) error {
+	allUsers, err := repo.GetAllUsers()
+	if err != nil {
+		return fmt.Errorf("GetAllUsers: %w", err)
+	}
+
+	if _, ok := allUsers.List[id]; !ok {
+		return model.UserNotFound
+	}
+
+	delete(allUsers.List, id)
+
+	b, _ := json.Marshal(allUsers)
+	_ = os.WriteFile(store, b, fs.ModePerm)
+
+	return nil
 }

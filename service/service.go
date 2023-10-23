@@ -7,10 +7,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"trueconf-refactor/repo"
 )
 
-type IRepository interface {
+type IHttpHandlers interface {
 	SearchUsers(w http.ResponseWriter, r *http.Request)
 	CreateUser(w http.ResponseWriter, r *http.Request)
 	GetUser(w http.ResponseWriter, r *http.Request)
@@ -19,12 +18,12 @@ type IRepository interface {
 }
 
 type Service struct {
-	repository IRepository
+	handlers IHttpHandlers
 }
 
 func NewService() *Service {
 	return &Service{
-		repository: repo.NewRepository(),
+		handlers: NewHttpHandlers(),
 	}
 }
 
@@ -44,13 +43,13 @@ func (s Service) Init() error {
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/v1", func(r chi.Router) {
 			r.Route("/users", func(r chi.Router) {
-				r.Get("/", s.repository.SearchUsers)
-				r.Post("/", s.repository.CreateUser)
+				r.Get("/", s.handlers.SearchUsers)
+				r.Post("/", s.handlers.CreateUser)
 
 				r.Route("/{id}", func(r chi.Router) {
-					r.Get("/", s.repository.GetUser)
-					r.Patch("/", s.repository.UpdateUser)
-					r.Delete("/", s.repository.DeleteUser)
+					r.Get("/", s.handlers.GetUser)
+					r.Patch("/", s.handlers.UpdateUser)
+					r.Delete("/", s.handlers.DeleteUser)
 				})
 			})
 		})
